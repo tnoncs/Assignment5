@@ -1,0 +1,204 @@
+---
+title: "Assignment 5 - Meta-analysis of pitch in schizophrenia"
+author: "Riccardo Fusaroli"
+date: "3/7/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/home/tnoncs/Assignment5')
+```
+
+# Building on the shoulders of giants: meta-analysis
+
+## Questions to be answered
+
+1. What is the current evidence for distinctive patterns of pitch mean and pitch sd in schizophrenia? Report how many papers report quantitative estimates, your method to analyze them, the estimated effect size of the difference (mean effect size and (mean) standard error for pitch mean, same for pitch sd) and forest plots representing it. 
+
+```{r}
+meta_data=read.csv("Data.csv", sep=";", header=T)
+meta_schizo=sum(meta_data$SampleSizeSchizo) # 518
+meta_control=sum(na.omit(meta_data$SampleSizeContros)) # 216
+
+library(metafor)
+library(plyr)
+PitchRange_mean=escalc('SMD', n1i=SampleSizeSchizo, n2i=SampleSizeContros, m1i=PitchMeanSchizo, m2i=PitchMeanControls, sd1i=PitchMeanSchizoSD, sd2i=PitchMeanControlsSD, data = meta_data) # getting the effect size of mean for each study
+PitchRange_mean=plyr::rename(PitchRange_mean, replace = c("yi"="yi_mean", "vi"="vi_mean"))
+
+PitchRange_sd=escalc('SMD', n1i=SampleSizeSchizo, n2i=SampleSizeContros, m1i=PitchSDSchizo, m2i=PitchSDControls, sd1i=PitchSDSchizoSD, sd2i=PitchSDControlsSD, data = meta_data)
+PitchRange_sd=plyr::rename(PitchRange_sd, replace = c("yi"="yi_sd", "vi"="vi_sd"))
+
+PitchRange=merge(PitchRange_mean, PitchRange_sd)
+
+ # estimate the overall effect
+library(lmerTest)
+m_mean <- lmer(yi_mean ~ 1 + (1 | Article), weights = 1/vi_mean, data=PitchRange, control=lmerControl(check.nobs.vs.nlev="ignore", check.nobs.vs.nRE="ignore"))
+summary(m_mean)
+
+m_sd <- lmer(yi_sd ~ 1 + (1 | Article), weights = 1/vi_sd, data=PitchRange, control=lmerControl(check.nobs.vs.nlev="ignore", check.nobs.vs.nRE="ignore"))
+summary(m_sd)
+
+res_mean <- rma(yi_mean, vi_mean, data = PitchRange, slab=Article) 
+summary(res_mean)
+
+forest(res_mean)
+confint(res_mean)
+
+res_sd <- rma(yi_sd, vi_sd, data = PitchRange, slab=Article) 
+summary(res_sd)
+
+forest(res_sd)
+confint(res_sd)
+
+PitchRange=plyr::rename(PitchRange, replace = c("SampleSizeContros"="SampleSizeControls"))
+meta_data=plyr::rename(meta_data, replace = c("SampleSizeContros"="SampleSizeControls"))
+
+```
+
+2. Do the results match your own analysis from Assignment 3? If you add your results to the meta-analysis, do the estimated effect sizes change? Report the new estimates and the new forest plots.
+
+```{r}
+port3_data= read.csv("port3_data.csv")
+port3_data$diagnosis= as.factor(port3_data$diagnosis)
+
+schizo= subset(port3_data, port3_data$diagnosis=="1")
+control= subset(port3_data, port3_data$diagnosis=="0")
+
+assignment3=data.frame(
+  PitchMeanSchizo=mean(schizo$mean), # mean of mean
+  PitchMeanControls=mean(control$mean), #mean of mean
+  PitchMeanSchizoSD=sd(schizo$mean), # sd of mean
+  PitchMeanControlsSD=sd(control$mean), # sd of mean
+  PitchSDSchizo=mean(schizo$sd), # mean of sd
+  PitchSDControls=mean(control$sd), # mean of sd
+  PitchSDSchizoSD=sd(schizo$sd), # sd of sd
+  PitchSDControlsSD=sd(control$sd),  # sd of sd
+  
+  Article="Assignment3",
+  Year=2017,
+  SampleSizeSchizo=as.numeric(length(unique(schizo$id))),
+  SampleSizeControls=as.numeric(length(unique(control$id)))
+)
+
+
+all_pitchrange=rbind(meta_data, assignment3)
+
+PitchRange_m=escalc('SMD', n1i=SampleSizeSchizo, n2i=SampleSizeControls, m1i=PitchMeanSchizo, m2i=PitchMeanControls, sd1i=PitchMeanSchizoSD, sd2i=PitchMeanControlsSD, data = all_pitchrange) # getting the effect size of mean for each study
+PitchRange_m=plyr::rename(PitchRange_m, replace = c("yi"="yi_mean", "vi"="vi_mean"))
+
+PitchRange_s=escalc('SMD', n1i=SampleSizeSchizo, n2i=SampleSizeControls, m1i=PitchSDSchizo, m2i=PitchSDControls, sd1i=PitchSDSchizoSD, sd2i=PitchSDControlsSD, data = all_pitchrange)
+
+PitchRange_s=plyr::rename(PitchRange_s, replace = c("yi"="yi_sd", "vi"="vi_sd"))
+
+PitchRange=merge(PitchRange_m, PitchRange_s)
+
+ # estimate the overall effect
+library(lmerTest)
+mo_mean <- lmer(yi_mean ~ 1 + (1 | Article), weights = 1/vi_mean, data=PitchRange, control=lmerControl(check.nobs.vs.nlev="ignore", check.nobs.vs.nRE="ignore"))
+summary(mo_mean)
+
+mo_sd <- lmer(yi_sd ~ 1 + (1 | Article), weights = 1/vi_sd, data=PitchRange, control=lmerControl(check.nobs.vs.nlev="ignore", check.nobs.vs.nRE="ignore"))
+summary(mo_sd)
+
+re_mean <- rma(yi_mean, vi_mean, data = PitchRange, slab=Article) # report from rma
+summary(re_mean)
+confint(re_mean)
+# tau^2 (estimated amount of total heterogeneity): 0.0607 (SE = 0.1133)
+# I^2 (total heterogeneity / total variability):   44.28%
+forest(re_mean)
+
+re_sd <- rma(yi_sd, vi_sd, data = PitchRange, slab=Article) 
+summary(re_sd)
+confint(re_sd)
+# tau^2 (estimated amount of total heterogeneity): 4.2287 (SE = 2.7324)
+# I^2 (total heterogeneity / total variability):   98.15%
+forest(re_sd)
+
+# Still not significant
+```
+
+
+3. Assess the quality of the literature: report and comment on heterogeneity of the studies (tau, I2), on publication bias (funnel plot), and on influential studies.
+
+```{r}
+# Quality check
+
+summary(re_mean)
+re_mean
+# tau^2 (estimated amount of total heterogeneity): 0.0208 (SE = 0.0552) # reporting is on the slides
+# I^2 (total heterogeneity / total variability):   26.15%
+summary(re_sd)
+# tau^2 (estimated amount of total heterogeneity): 3.4995 (SE = 2.0678)
+# I^2 (total heterogeneity / total variability):   98.18%
+
+# tau2= tells you the heterogeneity of studies # Tau square is a measure of overall variance
+# I2 = the percentage of tau2, that can not be explained by the uncertainty. or something like that...
+# I square is the proportion of variance due to heterogeneity, aka, that cannot be reduced to within-study uncertainty
+
+funnel(re_mean, main = "Random-Effects Model",xlab = "Standardized Mean Difference")
+funnel(re_sd, main = "Random-Effects Model",xlab = "Standardized Mean Difference")
+
+regtest(re_mean)  # not sign, that's good
+regtest(re_sd) # very significant!!
+ranktest(re_mean) # not sign, that's good
+ranktest(re_sd) 
+
+
+inf <- influence(re_mean)
+print(inf)
+plot(inf) # Martinez et al 2015
+
+infl <- influence(re_sd)
+print(infl)
+plot(infl)
+# Cohen et al. 2014
+
+```
+
+
+```{r}
+# removing influential studies
+new_data=PitchRange
+new_data[12, 13:14]=NA
+new_data=new_data[-10,]
+
+# Rerunning the analysis
+#meta analysis optimization
+rma_mean <- rma(yi=yi_mean, vi=vi_mean, data = new_data, slab=Article) 
+summary(rma_mean) 
+forest(rma_mean) 
+
+rma_sd <- rma(yi=yi_sd, vi=vi_sd, data = new_data, slab=Article) 
+summary(rma_sd) #ß=-0.3754
+forest(rma_sd) 
+
+# do we have to do these?
+rma_mean #tau^2=0  I^2=0.00%  Q(df = 3) = 0.6397, p-val = 0.8873
+confint(rma_mean) #CIs for tau^2: 0.0000  0.1169; for I^2: 0.0000 64.8153
+
+rma_sd #tau^2=0.0267  I^2=31.63%  Q(df = 5) = 7.0540, p-val = 0.2167
+confint(rma_sd) #CIs for tau^2 (0.0000  0.4135); for I^2: 0.0000 87.7657
+
+funnel(rma_mean, main = "Random-effects model (mean)",xlab = "Standardized mean difference")
+regtest(rma_mean) #significant z = 0.7936, p = 0.4274
+ranktest(rma_mean) #not significant Kendall's tau = 0.6667, p = 0.333
+
+funnel(rma_sd, main = "Random-effects model (standard deviation)",xlab = "Standardized mean difference") 
+regtest(rma_sd) #significant z = -2.0630, p = 0.039
+ranktest(rma_sd) #not significant Kendall's tau = -0.4667, p = 0.2722
+
+```
+
+## Tips on the process to follow:
+
+- Download the data on all published articles analyzing pitch in schizophrenia: https://www.dropbox.com/s/pmgw8wzc308so1p/Data.csv?dl=0
+- Following the procedure in the slides calculate effect size and standard error of the effect size per each study. N.B. we focus on pitch mean and pitch standard deviation.
+ . first try using lmer (to connect to what you know of mixed effects models)
+ . then use rma() (to get some juicy additional statistics)
+
+- Build a forest plot of the results (forest(model))
+ 
+- Go back to Assignment 3, add your own study to the data table, and re-run meta-analysis. Do the results change?
+
+- Now look at the output of rma() and check tau and I2
